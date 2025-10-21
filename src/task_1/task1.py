@@ -144,11 +144,11 @@ def run_experiments(model_type):
             xtr = x_train[..., tf.newaxis]
             xte = x_test[..., tf.newaxis]
             model = build_cnn_model((28, 28, 1), activation, initializer, reg, drop)
-            plot_dir = "plots/cnn"
+            plot_dir = "src/task_1/plots/cnn"
         else:
             xtr, xte = x_train, x_test
             model = build_mlp_model((28, 28), activation, initializer, reg, drop)
-            plot_dir = "plots/mlp"
+            plot_dir = "src/task_1/plots/mlp"
 
         acc, loss, plot_path = train_and_evaluate(
             model, xtr, y_train, xte, y_test, optimizer, epochs=25,
