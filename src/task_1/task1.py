@@ -134,40 +134,43 @@ def run_experiments(model_type):
 
     # --- Curated experimental combinations ---
     combos = [
-        # --- Good baselines ---
-        ("relu", "he_uniform", "adam_good", None, None),
-        ("relu", "he_uniform", "adam_good", "l2", 0.3),
+        # --- Baseline / simple regularization ---
+        ("relu", "he_uniform", "sgd_good", None, None),
         ("relu", "he_uniform", "sgd_good", "l2", None),
+        ("relu", "he_uniform", "adam_good", "l2", None),
 
-        # --- Overfitting vs underfitting tests ---
-        ("relu", "he_uniform", "adam_good", None, 0.7),
+        # --- Dropout-only cases ---
+        ("relu", "he_uniform", "sgd_good", None, 0.3),
+        ("relu", "he_uniform", "sgd_good", None, 0.7),
         ("relu", "random_normal", "adam_good", None, 0.3),
-        ("relu", "he_uniform", "sgd_bad", None, 0.3),
+        ("sigmoid", "he_uniform", "sgd_good", None, 0.3),
+        ("sigmoid", "random_normal", "sgd_bad", None, 0.7),
 
-        # --- Bad activation effects ---
-        ("sigmoid", "he_uniform", "adam_good", None, None),
-        ("sigmoid", "random_normal", "adam_bad", "l1", 0.3),
+        # --- Regularizer-only cases ---
+        ("relu", "he_uniform", "sgd_good", "l2", None),
+        ("relu", "random_normal", "sgd_good", "l1", None),
+        ("relu", "random_normal", "adam_bad", "l2", None),
+        ("sigmoid", "he_uniform", "sgd_bad", "l1", None),
+
+        # --- Extreme learning rate tests ---
+        ("relu", "random_normal", "adam_bad", None, None),
+        ("relu", "he_uniform", "adam_bad", None, None),
         ("sigmoid", "random_normal", "sgd_bad", None, None),
 
-        # --- Learning rate extremes ---
-        ("relu", "random_normal", "adam_bad", "l2", None),
-        ("relu", "he_uniform", "adam_bad", None, 0.7),
+        # --- Good setups with different activations ---
+        ("sigmoid", "he_uniform", "sgd_good", "l2", None),
+        ("sigmoid", "he_uniform", "adam_good", None, 0.3),
+        ("relu", "random_normal", "sgd_good", "l1", None),
 
-        # --- Regularization impact ---
-        ("relu", "he_uniform", "adam_good", "l1", None),
-        ("relu", "he_uniform", "sgd_good", "l1", 0.3),
+        # --- A few "both regularizer + dropout" to study interaction ---
+        ("relu", "he_uniform", "sgd_good", "l2", 0.3),
+        ("relu", "he_uniform", "adam_good", "l1", 0.3),
+        ("sigmoid", "random_normal", "sgd_bad", "l2", 0.7),
 
-        # --- Mixed good/bad combos ---
-        ("sigmoid", "he_uniform", "sgd_good", "l2", 0.3),
-        ("sigmoid", "random_normal", "adam_good", "l2", None),
-        ("relu", "random_normal", "sgd_good", None, 0.7),
-
-        # --- Dropout extremes with various optimizers ---
-        ("relu", "he_uniform", "adam_good", None, 0.7),
-        ("relu", "he_uniform", "sgd_good", None, 0.7),
-        ("sigmoid", "random_normal", "adam_good", None, 0.7),
-        ("relu", "random_normal", "adam_bad", None, 0.7),
-        ("relu", "he_uniform", "adam_bad", None, None),
+        # --- Some deliberately bad or unstable mixes ---
+        ("relu", "random_normal", "adam_bad", "l2", 0.7),
+        ("sigmoid", "he_uniform", "sgd_bad", None, 0.7),
+        ("relu", "he_uniform", "sgd_bad", None, 0.7),
     ]
 
     results = []
