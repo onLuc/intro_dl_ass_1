@@ -1,4 +1,5 @@
 import tensorflow as tf
+tf.config.run_functions_eagerly(True)
 from tensorflow import keras
 from tensorflow.keras import regularizers
 import matplotlib.pyplot as plt
@@ -122,9 +123,10 @@ def run_experiments(model_type):
     activations = ["relu", "tanh"]
     initializers = ["he_uniform", "glorot_uniform"]
     optimizers = {
-        "adam": keras.optimizers.Adam(learning_rate=0.001),
-        "sgd": keras.optimizers.SGD(learning_rate=0.01, momentum=0.9)
+        "adam": (keras.optimizers.Adam, {"learning_rate": 0.001}),
+        "sgd": (keras.optimizers.SGD, {"learning_rate": 0.01, "momentum": 0.9})
     }
+
     regularizers_list = [None, "l1", "l2"]
     dropout_rates = [None, 0.3]
 
@@ -134,11 +136,13 @@ def run_experiments(model_type):
              len(dropout_rates))
     i = 1
 
-    for activation, initializer, (opt_name, optimizer), reg, drop in itertools.product(
+    for activation, initializer, (opt_name, (opt_class, opt_params)), reg, drop in itertools.product(
         activations, initializers, optimizers.items(), regularizers_list, dropout_rates
     ):
         tag = f"{model_type}_{i}_{activation}_{initializer}_{opt_name}_{reg}_drop{drop}"
         print(f"\n[{i}/{total}] Running {tag} ...")
+
+        optimizer = opt_class(**opt_params)
 
         if model_type == "cnn":
             xtr = x_train[..., tf.newaxis]
@@ -176,7 +180,7 @@ def run_experiments(model_type):
 
 
 # --------------------
-# Main (run both)
+# Main
 # --------------------
 if __name__ == "__main__":
     print("\n=== Running MLP Experiments ===")
