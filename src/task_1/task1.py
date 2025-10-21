@@ -120,46 +120,83 @@ def train_and_evaluate(model, x_train, y_train, x_test, y_test,
 # Grid search helper
 # --------------------
 def run_experiments(model_type):
-    activations = ["relu", "tanh"]
-    initializers = ["he_uniform", "glorot_uniform"]
+    activations = ["relu", "sigmoid"]
+    initializers = ["he_uniform", "random_normal"]
     optimizers = {
-        "adam": (keras.optimizers.Adam, {"learning_rate": 0.001}),
-        "sgd": (keras.optimizers.SGD, {"learning_rate": 0.01, "momentum": 0.9})
+        "adam_good": (keras.optimizers.Adam, {"learning_rate": 0.001}),
+        "adam_bad": (keras.optimizers.Adam, {"learning_rate": 0.05}),   # Too high LR
+        "sgd_good": (keras.optimizers.SGD, {"learning_rate": 0.01, "momentum": 0.9}),
+        "sgd_bad": (keras.optimizers.SGD, {"learning_rate": 0.0001, "momentum": 0.0})  # Too slow
     }
 
     regularizers_list = [None, "l1", "l2"]
-    dropout_rates = [None, 0.3]
+    dropout_rates = [None, 0.3, 0.7]
+
+    # --- Curated experimental combinations ---
+    combos = [
+        # --- Good baselines ---
+        ("relu", "he_uniform", "adam_good", None, None),
+        ("relu", "he_uniform", "adam_good", "l2", 0.3),
+        ("relu", "he_uniform", "sgd_good", "l2", None),
+
+        # --- Overfitting vs underfitting tests ---
+        ("relu", "he_uniform", "adam_good", None, 0.7),
+        ("relu", "random_normal", "adam_good", None, 0.3),
+        ("relu", "he_uniform", "sgd_bad", None, 0.3),
+
+        # --- Bad activation effects ---
+        ("sigmoid", "he_uniform", "adam_good", None, None),
+        ("sigmoid", "random_normal", "adam_bad", "l1", 0.3),
+        ("sigmoid", "random_normal", "sgd_bad", None, None),
+
+        # --- Learning rate extremes ---
+        ("relu", "random_normal", "adam_bad", "l2", None),
+        ("relu", "he_uniform", "adam_bad", None, 0.7),
+
+        # --- Regularization impact ---
+        ("relu", "he_uniform", "adam_good", "l1", None),
+        ("relu", "he_uniform", "sgd_good", "l1", 0.3),
+
+        # --- Mixed good/bad combos ---
+        ("sigmoid", "he_uniform", "sgd_good", "l2", 0.3),
+        ("sigmoid", "random_normal", "adam_good", "l2", None),
+        ("relu", "random_normal", "sgd_good", None, 0.7),
+
+        # --- Dropout extremes with various optimizers ---
+        ("relu", "he_uniform", "adam_good", None, 0.7),
+        ("relu", "he_uniform", "sgd_good", None, 0.7),
+        ("sigmoid", "random_normal", "adam_good", None, 0.7),
+        ("relu", "random_normal", "adam_bad", None, 0.7),
+        ("relu", "he_uniform", "adam_bad", None, None),
+    ]
 
     results = []
-    total = (len(activations) * len(initializers) *
-             len(optimizers) * len(regularizers_list) *
-             len(dropout_rates))
-    i = 1
+    total = len(combos)
+    print(f"\nRunning {total} experiments for {model_type.upper()}")
+    i=1
 
-    for activation, initializer, (opt_name, (opt_class, opt_params)), reg, drop in itertools.product(
-        activations, initializers, optimizers.items(), regularizers_list, dropout_rates
-    ):
+    for i, (activation, initializer, opt_name, reg, drop) in enumerate(combos, 1):
+        opt_class, opt_params = optimizers[opt_name]
+        optimizer = opt_class(**opt_params)
         tag = f"{model_type}_{i}_{activation}_{initializer}_{opt_name}_{reg}_drop{drop}"
         print(f"\n[{i}/{total}] Running {tag} ...")
-
-        optimizer = opt_class(**opt_params)
 
         if model_type == "cnn":
             xtr = x_train[..., tf.newaxis]
             xte = x_test[..., tf.newaxis]
             model = build_cnn_model((28, 28, 1), activation, initializer, reg, drop)
-            plot_dir = "src/task_1/plots/cnn"
+            plot_dir = "plots/cnn"
         else:
             xtr, xte = x_train, x_test
             model = build_mlp_model((28, 28), activation, initializer, reg, drop)
-            plot_dir = "src/task_1/plots/mlp"
+            plot_dir = "plots/mlp"
 
         acc, loss, plot_path = train_and_evaluate(
-            model, xtr, y_train, xte, y_test, optimizer, epochs=25,
-            tag=tag, plot_dir=plot_dir
+            model, xtr, y_train, xte, y_test,
+            optimizer, epochs=10, tag=tag, plot_dir=plot_dir
         )
-        print(f"→ {model_type.upper()} | Test acc: {acc:.4f}, loss: {loss:.4f}")
 
+        print(f"→ {model_type.upper()} | Test acc: {acc:.4f}, loss: {loss:.4f}")
         results.append({
             "model": model_type,
             "activation": activation,
