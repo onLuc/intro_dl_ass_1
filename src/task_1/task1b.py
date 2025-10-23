@@ -102,7 +102,7 @@ def train_and_evaluate(model, optimizer, x_train, y_train, x_test, y_test,
     hist = model.fit(
         x_train, y_train,
         validation_split=0.1,
-        epochs=10,
+        epochs=30,
         batch_size=64,
         verbose=1
     )
