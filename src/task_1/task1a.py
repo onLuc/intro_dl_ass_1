@@ -1,7 +1,7 @@
 import tensorflow as tf
 tf.config.run_functions_eagerly(True)
 from tensorflow import keras
-from tensorflow.keras import regularizers
+from tensorflow.keras import regularizers # type: ignore
 import matplotlib.pyplot as plt
 import itertools
 import os
