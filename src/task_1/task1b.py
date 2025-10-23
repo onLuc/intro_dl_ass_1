@@ -26,6 +26,9 @@ def build_mlp_model(input_shape, activation, initializer, regularizer, dropout_r
     elif regularizer == "l2":
         reg = regularizers.l2(0.001)
 
+    if dropout_rate != dropout_rate:  # NaN check
+        dropout_rate = None
+
     model = keras.Sequential()
     model.add(keras.layers.Flatten(input_shape=input_shape))
     model.add(keras.layers.Dense(300, activation=activation,
@@ -48,6 +51,9 @@ def build_cnn_model(input_shape, activation, initializer, regularizer, dropout_r
         reg = regularizers.l1(0.001)
     elif regularizer == "l2":
         reg = regularizers.l2(0.001)
+
+    if dropout_rate != dropout_rate:  # NaN check
+        dropout_rate = None
 
     model = keras.Sequential([
         keras.layers.Conv2D(64, 7, activation=activation, padding="same",
