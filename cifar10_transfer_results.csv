@@ -1,0 +1,7 @@
+model,activation,initializer,optimizer,regularizer,dropout,test_acc,test_loss,plot
+mlp,relu,random_normal,adam_good,,0.3,0.40149998664855957,1.6766852140426636,src/task_1/plots/cifar10/mlp_top5_relu_random_normal_adam_good_nan_drop0.3.png
+mlp,sigmoid,he_uniform,adam_good,,0.3,0.43459999561309814,1.585463047027588,src/task_1/plots/cifar10/mlp_top16_sigmoid_he_uniform_adam_good_nan_drop0.3.png
+mlp,relu,he_uniform,sgd_good,,,0.46219998598098755,1.4957510232925415,src/task_1/plots/cifar10/mlp_top0_relu_he_uniform_sgd_good_nan_dropnan.png
+cnn,relu,random_normal,adam_good,,0.3,0.7123000025749207,0.977303683757782,src/task_1/plots/cifar10/cnn_top5_relu_random_normal_adam_good_nan_drop0.3.png
+cnn,relu,he_uniform,sgd_good,,0.3,0.7129999995231628,0.8754829168319702,src/task_1/plots/cifar10/cnn_top3_relu_he_uniform_sgd_good_nan_drop0.3.png
+cnn,relu,he_uniform,sgd_good,,,0.7057999968528748,1.153527021408081,src/task_1/plots/cifar10/cnn_top0_relu_he_uniform_sgd_good_nan_dropnan.png
