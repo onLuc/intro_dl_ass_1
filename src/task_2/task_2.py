@@ -32,7 +32,7 @@ SEED = 42
 np.random.seed(SEED)
 tf.random.set_seed(SEED)
 
-DATA_DIR = Path("../../data/A1_data_150")
+DATA_DIR = Path("../IDL_A1_task_2_runs/data")
 ARTIFACTS_DIR = Path("./artifacts")
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +41,8 @@ BATCH_SIZE = 32
 MAX_EPOCHS = 50
 CHECKPOINT_INTERVAL = 15
 
-DefINIT = "he_uniform"
+INITIALIZER = "he_uniform"
+DROPOUT = 0.3
 
 epoch_stats = {}
 
@@ -53,7 +54,7 @@ def clear_tf_session():
 
 def DenseK(*a, **k):
     if "kernel_initializer" not in k:
-        k["kernel_initializer"] = DefINIT
+        k["kernel_initializer"] = INITIALIZER
     return L.Dense(*a, **k)
 
 
@@ -200,53 +201,54 @@ def add_eval(cbs, cb):
     return list(cbs) + [cb]
 
 
-def get_backbone_light(input_shape=(75, 75, 1), dropout=0.1):
+def get_backbone_light(input_shape=(75, 75, 1), dropout=DROPOUT
+                       ):
     inp = Input(input_shape)
-    x = L.Conv2D(32, 3, padding="same", activation="relu")(inp)
+    x = L.Conv2D(32, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(inp)
     x = L.MaxPooling2D()(x)
-    x = L.Conv2D(64, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(64, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.MaxPooling2D()(x)
-    x = L.Conv2D(128, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(128, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.GlobalAveragePooling2D()(x)
     x = L.Dropout(dropout)(x)
     return Model(inp, x, name="backbone_light")
 
 
-def get_backbone_medium(input_shape=(75, 75, 1), dropout=0.1):
+def get_backbone_medium(input_shape=(75, 75, 1), dropout=DROPOUT):
     inp = Input(input_shape)
-    x = L.Conv2D(64, 3, padding="same", activation="relu", name="conv_b1_1")(inp)
+    x = L.Conv2D(64, 3, padding="same", activation="relu", name="conv_b1_1", kernel_initializer=INITIALIZER)(inp)
     x = L.BatchNormalization(name="bn_b1_1")(x)
     x = L.MaxPooling2D(name="pool_b1")(x)
-    x = L.Conv2D(128, 3, padding="same", activation="relu", name="conv_b2_1")(x)
+    x = L.Conv2D(128, 3, padding="same", activation="relu", name="conv_b2_1", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization(name="bn_b2_1")(x)
     x = L.MaxPooling2D(name="pool_b2")(x)
-    x = L.Conv2D(256, 3, padding="same", activation="relu", name="conv_b3_1")(x)
+    x = L.Conv2D(256, 3, padding="same", activation="relu", name="conv_b3_1", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization(name="bn_b3_1")(x)
     x = L.MaxPooling2D(name="pool_b3")(x)
-    x = L.Conv2D(512, 3, padding="same", activation="relu", name="conv_b4_1")(x)
+    x = L.Conv2D(512, 3, padding="same", activation="relu", name="conv_b4_1", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization(name="bn_b4_1")(x)
     x = L.GlobalAveragePooling2D(name="gap")(x)
     x = L.Dropout(dropout, name="drop_gap")(x)
     return Model(inp, x, name="backbone_medium")
 
 
-def get_backbone_heavy(input_shape=(75, 75, 1), dropout=0.2):
+def get_backbone_heavy(input_shape=(75, 75, 1), dropout=DROPOUT):
     inp = Input(input_shape)
-    x = L.Conv2D(64, 3, padding="same", activation="relu")(inp)
+    x = L.Conv2D(64, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(inp)
     x = L.BatchNormalization()(x)
-    x = L.Conv2D(64, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(64, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.MaxPooling2D()(x)
-    x = L.Conv2D(128, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(128, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization()(x)
-    x = L.Conv2D(128, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(128, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.MaxPooling2D()(x)
-    x = L.Conv2D(256, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(256, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization()(x)
-    x = L.Conv2D(256, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(256, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.MaxPooling2D()(x)
-    x = L.Conv2D(512, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(512, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.BatchNormalization()(x)
-    x = L.Conv2D(512, 3, padding="same", activation="relu")(x)
+    x = L.Conv2D(512, 3, padding="same", activation="relu", kernel_initializer=INITIALIZER)(x)
     x = L.GlobalAveragePooling2D()(x)
     x = L.Dropout(dropout)(x)
     return Model(inp, x, name="backbone_heavy")
@@ -256,7 +258,7 @@ def build_head_classification(backbone, num_classes, lr=1e-3):
     inp = backbone.input
     z = backbone.output
     x = DenseK(512, activation="relu")(z)
-    x = L.Dropout(0.2)(x)
+    x = L.Dropout(DROPOUT)(x)
     logits = DenseK(num_classes)(x)
     out = L.Activation("softmax", name="time_class")(logits)
     model = Model(inp, out, name=f"classifier_{num_classes}")
@@ -268,7 +270,7 @@ def build_head_regression(backbone, lr=1e-3):
     inp = backbone.input
     z = backbone.output
     x = DenseK(256, activation="relu")(z)
-    x = L.Dropout(0.2)(x)
+    x = L.Dropout(DROPOUT)(x)
     out = DenseK(1, name="time_float")(x)
     model = Model(inp, out, name="regressor_time")
     model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse", metrics=["mae"])
@@ -344,7 +346,7 @@ def build_head_multi_circle(backbone, lr=1e-3):
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
-    shared = L.Dropout(0.2, name="mh_shared_do")(shared)
+    shared = L.Dropout(DROPOUT, name="mh_shared_do")(shared)
     hour_logits = DenseK(12, name="hour_logits")(shared)
     hour_out = L.Activation("softmax", name="hour_head")(hour_logits)
     min_out = DenseK(2, activation="linear", name="min_head")(shared)
@@ -372,7 +374,7 @@ def build_head_multihead(backbone, lr=1e-3, minute_loss_weight=1.0):
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
-    shared = L.Dropout(0.2, name="mh_shared_do")(shared)
+    shared = L.Dropout(DROPOUT, name="mh_shared_do")(shared)
     hour_logits = DenseK(12, name="hour_logits")(shared)
     hour_out = L.Activation("softmax", name="hour_head")(hour_logits)
     min_out = DenseK(1, name="min_head")(shared)
@@ -415,7 +417,7 @@ def build_head_circle(backbone, lr=1e-3):
     inp = backbone.input
     z = backbone.output
     x = DenseK(256, activation="relu")(z)
-    x = L.Dropout(0.2)(x)
+    x = L.Dropout(DROPOUT)(x)
     out = DenseK(2, activation="linear", name="time_angle_vec")(x)
     model = Model(inp, out, name="circle_time")
     model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse", metrics=["mae"])
@@ -424,10 +426,10 @@ def build_head_circle(backbone, lr=1e-3):
 
 def get_custom_backbone(name):
     if name == "light":
-        return get_backbone_light(input_shape=IMAGE_SIZE + (1,), dropout=0.1)
+        return get_backbone_light(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
     if name == "heavy":
-        return get_backbone_heavy(input_shape=IMAGE_SIZE + (1,), dropout=0.1)
-    return get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=0.1)
+        return get_backbone_heavy(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
+    return get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
 
 
 def binning(n_bins):
@@ -600,7 +602,7 @@ def run_final_compare():
     tr, te = split_80_20()
 
     # --- final circle ---
-    bb1 = get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=0.1)
+    bb1 = get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
     ds_tr = make_ds_circle(X[tr], y_hm[tr], shuffle=True)
     ds_te = make_ds_circle(X[te], y_hm[te])
     c1 = build_head_circle(bb1, lr=1e-3)
@@ -613,7 +615,7 @@ def run_final_compare():
     cse1, _ = eval_common_sense_error_circle(c1, X[te], y_hm[te])
 
     # --- final multi-circle ---
-    bb2 = get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=0.1)
+    bb2 = get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
     ds_tr2 = make_ds_multi_circle(X[tr], y_hm[tr], shuffle=True)
     ds_te2 = make_ds_multi_circle(X[te], y_hm[te])
     m2 = build_head_multi_circle(bb2, lr=1e-3)
