@@ -51,10 +51,8 @@ WIDE_BASE = ["model", "epoch", "time_s", "lr"]
 
 # Keras logs that may appear across your heads
 KERAS_COLS = [
-    # always present
+    # always present for single-output models
     "loss", "val_loss",
-
-    # single-output classification/regression/circle
     "accuracy", "val_accuracy",
     "mae", "val_mae",
 
@@ -62,14 +60,14 @@ KERAS_COLS = [
     "time_float_mae", "val_time_float_mae",
     "time_angle_vec_mae", "val_time_angle_vec_mae",
 
-    # multi-circle per-output metrics and losses
+    # multi-head per-output metrics and losses
     "hour_head_accuracy", "val_hour_head_accuracy",
     "min_head_mae", "val_min_head_mae",
     "hour_head_loss", "val_hour_head_loss",
     "min_head_loss", "val_min_head_loss",
 ]
 
-# Your task-specific CSE summaries (train & val)
+# Task-specific CSE summaries (train & val)
 CSE_COLS = [
     "train_cse_mean", "train_cse_median", "train_cse_p90",
     "train_acc_le_1m", "train_acc_le_5m", "train_acc_le_10m",
@@ -151,7 +149,7 @@ def eval_common_sense_error_circle(model, X_sub, y_hm_sub):
     return cse, pred_total_min
 
 def eval_common_sense_error_multi_circle(model, X, y_hm):
-    """CSE for the multi_circle head (hour softmax + minute (sin, cos) vector)."""
+    """CSE for the multi-head circle: hour softmax + minute (sin, cos) vector."""
     preds = model.predict(X[..., None], verbose=0)
     y_hour = np.argmax(preds["hour_head"], axis=1)
 
@@ -166,6 +164,21 @@ def eval_common_sense_error_multi_circle(model, X, y_hm):
     min_pred = (ang / (2.0 * np.pi) * 60.0)
 
     # combine hour + minute; wrap to 12h = 720 minutes
+    total_pred = (y_hour.astype(np.float32) * 60.0 + min_pred) % 720.0
+    true_min = (minutes_after_midnight(y_hm[:, 0], y_hm[:, 1]).astype(np.float32) % 720.0)
+
+    diff = np.abs(total_pred - true_min)
+    return np.minimum(diff, 720.0 - diff)
+
+def eval_common_sense_error_multi_regular(model, X, y_hm):
+    """CSE for the multi-head regular: hour softmax + minute scalar (0..60)."""
+    preds = model.predict(X[..., None], verbose=0)
+    y_hour = np.argmax(preds["hour_head"], axis=1)
+
+    # minute scalar -> wrap/clamp into [0, 60)
+    min_pred = preds["min_head"].reshape(-1).astype(np.float32)
+    min_pred = np.mod(min_pred, 60.0)
+
     total_pred = (y_hour.astype(np.float32) * 60.0 + min_pred) % 720.0
     true_min = (minutes_after_midnight(y_hm[:, 0], y_hm[:, 1]).astype(np.float32) % 720.0)
 
@@ -327,14 +340,16 @@ def build_head_regression(backbone, lr=1e-3):
     return model
 
 def build_head_multi(backbone, lr=1e-3, minute_loss_weight=1.0):
+    """Multi-head REGULAR: hour softmax + minute scalar regression."""
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
     shared = L.Dropout(DROPOUT, name="mh_shared_do")(shared)
     hour_logits = DenseK(12, name="hour_logits")(shared)
     hour_out = L.Activation("softmax", name="hour_head")(hour_logits)
-    min_out = DenseK(1, name="min_head")(shared)
-    model = Model(inp, {"hour_head": hour_out, "min_head": min_out}, name="multihead_time")
+    # Force FP32 head for numeric stability with mixed precision
+    min_out = DenseK(1, name="min_head", dtype="float32")(shared)
+    model = Model(inp, {"hour_head": hour_out, "min_head": min_out}, name="multi_regular")
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
         loss={"hour_head": "sparse_categorical_crossentropy", "min_head": "mse"},
@@ -358,6 +373,7 @@ def build_head_circle(backbone, lr=1e-3):
     return model
 
 def build_head_multi_circle(backbone, lr=1e-3):
+    """Multi-head CIRCLE: hour softmax + minute (sin, cos) vector."""
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
@@ -560,6 +576,14 @@ def get_custom_cbs(key):
     ]
 
 def run_all(backbones, label_representations, bins):
+    """
+    Runs the requested combinations with clear model keys:
+      - classifier (bins in {24, 144, 720})          -> key: "{backbone}__classifier_{bins}bins"
+      - regression                                   -> key: "{backbone}__regression"
+      - multi-head REGULAR (hour softmax + minute)   -> key: "{backbone}__multi_regular"
+      - circle (single-head 2D vector)               -> key: "{backbone}__circle"
+      - multi-head CIRCLE (hour softmax + sincos)    -> key: "{backbone}__multi_circle"
+    """
     # Official 80/20 split per assignment
     tr_all, te_idx = split_80_20()
 
@@ -583,7 +607,7 @@ def run_all(backbones, label_representations, bins):
                     ds_va = make_ds_classification(X[va_idx], y_bins[va_idx])
 
                     clf = build_head_classification(bb, num_classes=nb, lr=1e-3)
-                    key = f"{bname}_clf{nb}"
+                    key = f"{bname}__classifier_{nb}bins"
 
                     cb_csv = EpochCSVLogger(
                         key=key,
@@ -623,7 +647,7 @@ def run_all(backbones, label_representations, bins):
                 ds_va = make_ds_regression(X[va_idx], y_reg[va_idx])
 
                 reg = build_head_regression(bb, lr=1e-3)
-                key = f"{bname}_reg"
+                key = f"{bname}__regression"
 
                 cb_csv = EpochCSVLogger(
                     key=key,
@@ -662,7 +686,7 @@ def run_all(backbones, label_representations, bins):
                 ds_va = make_ds_circle(X[va_idx], y_hm[va_idx])
 
                 circ = build_head_circle(bb, lr=1e-3)
-                key = f"{bname}_circle"
+                key = f"{bname}__circle"
 
                 cb_csv = EpochCSVLogger(
                     key=key,
@@ -693,15 +717,54 @@ def run_all(backbones, label_representations, bins):
                         pass
                 clear_tf_session()
 
-        if "multi" in label_representations:
+        if "multi_regular" in label_representations:
+            try:
+                bb = get_custom_backbone(bname)
+
+                ds_tr = make_ds_multi(X[tr_idx], y_hm[tr_idx], shuffle=True)
+                ds_va = make_ds_multi(X[va_idx], y_hm[va_idx])
+
+                mh_reg = build_head_multi(bb, lr=1e-3)
+                key = f"{bname}__multi_regular"
+
+                cb_csv = EpochCSVLogger(
+                    key=key,
+                    train_xy=(X[tr_idx], y_hm[tr_idx]),
+                    val_xy=(X[va_idx], y_hm[va_idx]),
+                    cse_fn=lambda m, Xt, Yt: eval_common_sense_error_multi_regular(m, Xt, Yt)
+                )
+
+                cbs = add_eval(get_custom_cbs(key), cb_csv)
+
+                mh_reg.fit(
+                    ds_tr,
+                    validation_data=ds_va,
+                    epochs=MAX_EPOCHS,
+                    callbacks=cbs,
+                    verbose=2,
+                )
+
+                cse = eval_common_sense_error_multi_regular(mh_reg, X[te_idx], y_hm[te_idx])
+                describe_errors(key, cse)
+                log_result(key, cse)
+
+            finally:
+                for obj in ("ds_tr", "ds_va", "mh_reg", "bb"):
+                    try:
+                        del locals()[obj]
+                    except Exception:
+                        pass
+                clear_tf_session()
+
+        if "multi_circle" in label_representations:
             try:
                 bb = get_custom_backbone(bname)
 
                 ds_tr = make_ds_multi_circle(X[tr_idx], y_hm[tr_idx], shuffle=True)
                 ds_va = make_ds_multi_circle(X[va_idx], y_hm[va_idx])
 
-                mh = build_head_multi_circle(bb, lr=1e-3)
-                key = f"{bname}_multi_circle"
+                mh_circ = build_head_multi_circle(bb, lr=1e-3)
+                key = f"{bname}__multi_circle"
 
                 cb_csv = EpochCSVLogger(
                     key=key,
@@ -712,7 +775,7 @@ def run_all(backbones, label_representations, bins):
 
                 cbs = add_eval(get_custom_cbs(key), cb_csv)
 
-                mh.fit(
+                mh_circ.fit(
                     ds_tr,
                     validation_data=ds_va,
                     epochs=MAX_EPOCHS,
@@ -720,12 +783,12 @@ def run_all(backbones, label_representations, bins):
                     verbose=2,
                 )
 
-                cse = eval_common_sense_error_multi_circle(mh, X[te_idx], y_hm[te_idx])
+                cse = eval_common_sense_error_multi_circle(mh_circ, X[te_idx], y_hm[te_idx])
                 describe_errors(key, cse)
                 log_result(key, cse)
 
             finally:
-                for obj in ("ds_tr", "ds_va", "mh", "bb"):
+                for obj in ("ds_tr", "ds_va", "mh_circ", "bb"):
                     try:
                         del locals()[obj]
                     except Exception:
@@ -743,7 +806,13 @@ y_train, y_val, y_test = y_hm[train_idx], y_hm[val_idx], y_hm[test_idx]
 
 def main():
     backbones = ["light", "medium", "heavy"]
-    label_representations = ["clf", "reg", "multi", "circle"]
+    # Five label representations / heads:
+    # - classifier (bins = [24, 144, 720])
+    # - regression
+    # - multi-head-regular
+    # - circle
+    # - multi-head-circle
+    label_representations = ["clf", "reg", "multi_regular", "circle", "multi_circle"]
     bins = [24, 144, 720]
     run_all(backbones, label_representations, bins)
 
