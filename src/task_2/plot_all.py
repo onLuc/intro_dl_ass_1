@@ -16,9 +16,9 @@ from matplotlib.lines import Line2D
 # --------------------------
 def get_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--epoch", default="../plots/epoch_stats_long.csv", help="Path to per-epoch CSV")
-    ap.add_argument("--summary", default="../plots/results_summary.csv", help="Path to summary CSV")
-    ap.add_argument("--outdir", default="images", help="Output directory for plots")
+    ap.add_argument("--epoch", default="./results/epoch_stats_long.csv", help="Path to per-epoch CSV")
+    ap.add_argument("--summary", default="./results/results_summary.csv", help="Path to summary CSV")
+    ap.add_argument("--outdir", default="./images", help="Output directory for results")
     return ap.parse_args()
 
 
@@ -96,7 +96,7 @@ REP_LABELS = {
     "circle": "circle",
     "multi-head-circle": "multi-head-circle",
 }
-# backbone line styles for epoch plots
+# backbone line styles for epoch results
 BB_LINESTYLE = {"light": ":", "medium": "--", "heavy": "-"}
 
 
@@ -396,3 +396,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Run - arguments
+# Path to per-epoch CSV -> --epoch, default="./results/epoch_stats_long.csv"
+# Path to summary CSV -> --summary", default="./results/results_summary.csv"
+# Output directory for results -> --outdir", default="images"

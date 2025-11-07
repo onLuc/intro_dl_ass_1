@@ -14,7 +14,6 @@ import tensorflow as tf
 from tensorflow.keras import layers as L, Model, Input
 from tensorflow.keras import mixed_precision as mp
 
-# -------------------- GPU + mixed precision --------------------
 gpus = tf.config.list_physical_devices('GPU')
 for g in gpus:
     try:
@@ -24,12 +23,11 @@ for g in gpus:
 
 mp.set_global_policy("mixed_float16")
 
-# -------------------- Globals / config --------------------
 SEED = 42
 np.random.seed(SEED)
 tf.random.set_seed(SEED)
 
-DATA_DIR = Path("../IDL_A1_task_2_runs/data")
+DATA_DIR = Path("./data/A1_data_150") # expects images.npy and labels.npy
 ARTIFACTS_DIR = Path("./artifacts")
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -40,34 +38,28 @@ MAX_EPOCHS = 30
 INITIALIZER = "he_uniform"
 DROPOUT = 0.3
 
-EPOCH_CSV_PATH = Path("plots/epoch_metrics.csv")
-TOL_THRESHOLDS = (1, 5, 10)  # minutes
+EPOCH_CSV_PATH = Path("results/epoch_metrics.csv")
+TOL_THRESHOLDS = (1, 5, 10)
 
 epoch_stats = {}
 results_summary = []
 
-# ---------- Fixed wide CSV schema ----------
 WIDE_BASE = ["model", "epoch", "time_s", "lr"]
 
-# Keras logs that may appear across your heads
 KERAS_COLS = [
-    # always present for single-output models
     "loss", "val_loss",
     "accuracy", "val_accuracy",
     "mae", "val_mae",
 
-    # names that can appear if Keras prefixes by output layer (safe to include)
     "time_float_mae", "val_time_float_mae",
     "time_angle_vec_mae", "val_time_angle_vec_mae",
 
-    # multi-head per-output metrics and losses
     "hour_head_accuracy", "val_hour_head_accuracy",
     "min_head_mae", "val_min_head_mae",
     "hour_head_loss", "val_hour_head_loss",
     "min_head_loss", "val_min_head_loss",
 ]
 
-# Task-specific CSE summaries (train & val)
 CSE_COLS = [
     "train_cse_mean", "train_cse_median", "train_cse_p90",
     "train_acc_le_1m", "train_acc_le_5m", "train_acc_le_10m",
@@ -137,7 +129,6 @@ def eval_common_sense_error_regressor(model, X_sub, y_hm_sub):
 
 def eval_common_sense_error_circle(model, X_sub, y_hm_sub):
     vecs = model.predict(X_sub[..., None], verbose=0).astype(np.float32)
-    # normalize to unit vectors
     norms = np.linalg.norm(vecs, axis=1, keepdims=True)
     vecs = np.where(norms > 0, vecs / norms, vecs)
     pred_total_min = []
@@ -149,21 +140,17 @@ def eval_common_sense_error_circle(model, X_sub, y_hm_sub):
     return cse, pred_total_min
 
 def eval_common_sense_error_multi_circle(model, X, y_hm):
-    """CSE for the multi-head circle: hour softmax + minute (sin, cos) vector."""
     preds = model.predict(X[..., None], verbose=0)
     y_hour = np.argmax(preds["hour_head"], axis=1)
 
-    # minute vector (sin, cos) -> normalize to unit circle
     v = preds["min_head"].astype(np.float32)
     norms = np.linalg.norm(v, axis=1, keepdims=True)
     v = np.where(norms > 0, v / norms, v)
 
-    # angle -> minutes on the small circle (0..60)
-    ang = np.arctan2(v[:, 0], v[:, 1])           # atan2(sin, cos)
+    ang = np.arctan2(v[:, 0], v[:, 1])
     ang = (ang + 2.0 * np.pi) % (2.0 * np.pi)
     min_pred = (ang / (2.0 * np.pi) * 60.0)
 
-    # combine hour + minute; wrap to 12h = 720 minutes
     total_pred = (y_hour.astype(np.float32) * 60.0 + min_pred) % 720.0
     true_min = (minutes_after_midnight(y_hm[:, 0], y_hm[:, 1]).astype(np.float32) % 720.0)
 
@@ -171,11 +158,9 @@ def eval_common_sense_error_multi_circle(model, X, y_hm):
     return np.minimum(diff, 720.0 - diff)
 
 def eval_common_sense_error_multi_regular(model, X, y_hm):
-    """CSE for the multi-head regular: hour softmax + minute scalar (0..60)."""
     preds = model.predict(X[..., None], verbose=0)
     y_hour = np.argmax(preds["hour_head"], axis=1)
 
-    # minute scalar -> wrap/clamp into [0, 60)
     min_pred = preds["min_head"].reshape(-1).astype(np.float32)
     min_pred = np.mod(min_pred, 60.0)
 
@@ -340,14 +325,12 @@ def build_head_regression(backbone, lr=1e-3):
     return model
 
 def build_head_multi(backbone, lr=1e-3, minute_loss_weight=1.0):
-    """Multi-head REGULAR: hour softmax + minute scalar regression."""
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
     shared = L.Dropout(DROPOUT, name="mh_shared_do")(shared)
     hour_logits = DenseK(12, name="hour_logits")(shared)
     hour_out = L.Activation("softmax", name="hour_head")(hour_logits)
-    # Force FP32 head for numeric stability with mixed precision
     min_out = DenseK(1, name="min_head", dtype="float32")(shared)
     model = Model(inp, {"hour_head": hour_out, "min_head": min_out}, name="multi_regular")
     model.compile(
@@ -373,7 +356,6 @@ def build_head_circle(backbone, lr=1e-3):
     return model
 
 def build_head_multi_circle(backbone, lr=1e-3):
-    """Multi-head CIRCLE: hour softmax + minute (sin, cos) vector."""
     inp = backbone.input
     z = backbone.output
     shared = DenseK(256, activation="relu", name="mh_shared_dense")(z)
@@ -396,7 +378,6 @@ def get_custom_backbone(name):
         return get_backbone_heavy(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
     return get_backbone_medium(input_shape=IMAGE_SIZE + (1,), dropout=DROPOUT)
 
-# -------------------- Label transforms --------------------
 def angle_targets_from_labels(y_hm):
     mins_total = minutes_after_midnight(y_hm[:, 0], y_hm[:, 1]).astype(np.float32) % 720.0
     theta = mins_total / 720.0 * (2.0 * np.pi)
@@ -430,12 +411,6 @@ def acc_within_threshold(cse_vec, thr_min):
     return float(np.mean(cse <= float(thr_min)))
 
 class EpochCSVLogger(tf.keras.callbacks.Callback):
-    """
-    Logs per-epoch train/val loss/metrics from Keras + custom CSE stats
-    for both train and val splits, and appends rows to a CSV.
-
-    cse_fn: (model, X, y) -> 1D array of per-sample CSE (minutes)
-    """
     def __init__(self, key, train_xy, val_xy, cse_fn,
                  csv_path=EPOCH_CSV_PATH, thresholds=TOL_THRESHOLDS):
         super().__init__()
@@ -474,7 +449,6 @@ class EpochCSVLogger(tf.keras.callbacks.Callback):
         cse_tr = self.cse_fn(self.model, Xtr, ytr)
         cse_va = self.cse_fn(self.model, Xva, yva)
 
-        # Start with all fixed columns = None (keeps header stable)
         row = {c: None for c in ALL_COLS}
         row.update({
             "model": self.key,
@@ -483,12 +457,10 @@ class EpochCSVLogger(tf.keras.callbacks.Callback):
             "lr": extract_lr(self.model.optimizer),
         })
 
-        # Fill Keras logs only if they are in the fixed schema
         for k, v in (logs or {}).items():
             if k in row:
                 row[k] = float(v)
 
-        # Add CSE summaries into the fixed keys
         def summarize_cse(cse):
             cse = np.asarray(cse, dtype=np.float32)
             d = {
@@ -518,13 +490,11 @@ class EpochCSVLogger(tf.keras.callbacks.Callback):
         row["val_acc_le_5m"]    = va["acc_le_5m"]
         row["val_acc_le_10m"]   = va["acc_le_10m"]
 
-        # Keep your in-memory epoch_stats (optional)
         epoch_stats[self.key]["rows"].append(row)
         epoch_stats[self.key]["time"].append(float(dt))
         epoch_stats[self.key]["cse"].append(row["val_cse_mean"])
         epoch_stats[self.key]["val_loss"].append(row.get("val_loss", None))
 
-        # Append to CSV with stable column order
         df_row = pd.DataFrame([row], columns=ALL_COLS)
         header = not self.csv_path.exists()
         df_row.to_csv(self.csv_path, mode="a", header=header, index=False)
@@ -556,7 +526,7 @@ def epoch_stats_to_df(epoch_stats):
         rows.extend(d.get("rows", []))
     return pd.DataFrame(rows)
 
-def save_tables_for_report(epoch_stats, results_summary, out_dir="plots"):
+def save_tables_for_report(epoch_stats, results_summary, out_dir="results"):
     out = Path(out_dir)
     out.mkdir(exist_ok=True)
     df_epoch = epoch_stats_to_df(epoch_stats)
@@ -576,18 +546,8 @@ def get_custom_cbs(key):
     ]
 
 def run_all(backbones, label_representations, bins):
-    """
-    Runs the requested combinations with clear model keys:
-      - classifier (bins in {24, 144, 720})          -> key: "{backbone}__classifier_{bins}bins"
-      - regression                                   -> key: "{backbone}__regression"
-      - multi-head REGULAR (hour softmax + minute)   -> key: "{backbone}__multi_regular"
-      - circle (single-head 2D vector)               -> key: "{backbone}__circle"
-      - multi-head CIRCLE (hour softmax + sincos)    -> key: "{backbone}__multi_circle"
-    """
-    # Official 80/20 split per assignment
     tr_all, te_idx = split_80_20()
 
-    # Carve validation from the 80% train: 12.5% of train = 10% of total
     rng = np.random.default_rng(SEED)
     tr_shuf = tr_all.copy()
     rng.shuffle(tr_shuf)
@@ -795,7 +755,6 @@ def run_all(backbones, label_representations, bins):
                         pass
                 clear_tf_session()
 
-    # Save consolidated CSV snapshots for convenience
     save_tables_for_report(epoch_stats, results_summary)
 
 # -------------------- Load data & run --------------------
