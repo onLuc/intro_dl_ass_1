@@ -1,1 +1,7 @@
-venv_IDL
+venv_IDL.idea/
+env/
+.venv*/
+*.DS_Store
+src/task_2/data/
+src/task_2/results_final/
+src/task_2/images_final/
